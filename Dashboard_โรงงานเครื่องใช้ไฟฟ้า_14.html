@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard โรงงานผลิตเครื่องใช้ไฟฟ้า - TP Logistics</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&family=Sarabun:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root{
+  --bg:#0B1220; --panel:#121C2E; --panel2:#0F1928; --line:#22314A;
+  --text:#E9EDF5; --text2:#8C97B0; --text3:#5D6882;
+  --amber:#FFC94D;
+  --green:#4ADE80; --green-dim:#1D3A2A;
+  --blue:#5AA9FF; --blue-dim:#1B3050;
+  --teal:#34D3C4; --teal-dim:#173A38;
+  --gray:#8C97B0; --gray-dim:#26324A;
+  --red:#F87171; --red-dim:#3A2020;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{background:var(--bg); color:var(--text); font-family:'Sarabun',sans-serif;}
+.wrap{max-width:1360px; margin:0 auto; padding:28px 32px 60px;}
+h1,h2,h3{font-family:'Kanit',sans-serif; font-weight:600;}
+.eyebrow{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.12em; color:var(--amber); text-transform:uppercase;}
+.hero-title{font-size:30px; margin-top:6px;}
+.hero-sub{color:var(--text2); font-size:14px; margin-top:6px;}
+.kpi-row{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:26px;}
+.kpi{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px;}
+.kpi .n{font-family:'JetBrains Mono',monospace; font-size:28px; font-weight:600;}
+.kpi .l{font-size:12px; color:var(--text2); margin-top:4px;}
+.kpi.k-total .n{color:var(--text);}
+.kpi.k-customer .n{color:var(--green);}
+.kpi.k-active .n{color:var(--blue);}
+.kpi.k-blocked .n{color:var(--gray);}
+.kpi.k-lost .n{color:var(--red);}
+.tabs{display:flex; gap:8px; margin-top:28px; border-bottom:1px solid var(--line); padding-bottom:0;}
+.tab{font-family:'Kanit',sans-serif; font-size:14px; color:var(--text2); background:none; border:none; padding:10px 16px; cursor:pointer; border-bottom:2px solid transparent;}
+.tab.active{color:var(--amber); border-bottom:2px solid var(--amber);}
+.tab .cnt{font-family:'JetBrains Mono',monospace; font-size:11px; opacity:.7; margin-left:4px;}
+.grid{display:grid; grid-template-columns:1.5fr 1fr; gap:16px; margin-top:20px;}
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px 22px;}
+.panel-title{font-size:14px; color:var(--text2); text-transform:uppercase; letter-spacing:.06em; margin-bottom:14px; font-family:'JetBrains Mono',monospace; font-weight:400;}
+.legend{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px; font-size:12px; color:var(--text2);}
+.legend span{display:inline-flex; align-items:center; gap:6px;}
+.dot{width:9px; height:9px; border-radius:50%; display:inline-block;}
+#map{width:100%; height:560px; border-radius:8px; border:1px solid var(--line);}
+.leaflet-popup-content-wrapper{background:var(--panel2); color:var(--text); border-radius:8px;}
+.leaflet-popup-tip{background:var(--panel2);}
+.leaflet-popup-content{font-family:'Sarabun',sans-serif; font-size:12.5px; margin:10px 12px;}
+.leaflet-popup-content b{font-family:'Kanit',sans-serif; font-size:13.5px;}
+.leaflet-container{background:#0E1826;}
+.map-label{background:transparent; border:none; box-shadow:none; color:#E9EDF5; font-family:'Sarabun',sans-serif; font-size:11.5px; font-weight:600; text-shadow:0 0 3px #0B1220, 0 0 3px #0B1220, 0 0 3px #0B1220;}
+.map-label::before{display:none;}
+.map-note{font-size:11.5px; color:var(--text3); margin-top:8px; font-family:'JetBrains Mono',monospace;}
+.funnel-row{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
+.funnel-bar{height:26px; border-radius:5px; display:flex; align-items:center; padding:0 10px; font-size:12px; font-family:'JetBrains Mono',monospace; color:var(--panel2); font-weight:600; white-space:nowrap;}
+.funnel-label{width:150px; font-size:13px; color:var(--text2); flex-shrink:0;}
+.unknown-list{margin-top:16px; padding-top:14px; border-top:1px solid var(--line);}
+.unknown-list .u-item{display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; color:var(--text2);}
+.unknown-list .u-item b{color:var(--text);}
+.table-wrap{margin-top:20px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px 22px; overflow-x:auto;}
+.filters{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;}
+.filters button{font-family:'Sarabun',sans-serif; font-size:12.5px; background:var(--panel2); color:var(--text2); border:1px solid var(--line); padding:6px 12px; border-radius:20px; cursor:pointer;}
+.filters button.active{background:var(--amber); color:#3A2E05; border-color:var(--amber); font-weight:600;}
+.filter-group-label{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; width:100%; margin-top:4px; margin-bottom:-2px;}
+.filter-group-label:first-child{margin-top:0;}
+.search-box{background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:8px 14px; color:var(--text); font-family:'Sarabun',sans-serif; font-size:13px; width:280px; outline:none;}
+.search-box::placeholder{color:var(--text3);}
+.search-box:focus{border-color:var(--amber);}
+.clear-btn{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text3); background:none; border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer;}
+.clear-btn:hover{color:var(--text); border-color:var(--text2);}
+.result-count{font-size:11.5px; color:var(--text3); font-family:'JetBrains Mono',monospace; margin-bottom:10px;}
+.data-mgmt{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-top:18px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+.dm-text{font-size:12.5px; color:var(--text2); max-width:420px;}
+.dm-text b{color:var(--text); font-family:'Kanit',sans-serif;}
+.dm-actions{display:flex; gap:10px; flex-wrap:wrap;}
+.dm-btn{font-family:'Sarabun',sans-serif; font-size:13px; background:var(--panel2); color:var(--text); border:1px solid var(--line); padding:9px 16px; border-radius:8px; cursor:pointer; font-weight:500;}
+.dm-btn:hover{border-color:var(--text2);}
+.dm-btn-primary{background:var(--amber); color:#3A2E05; border-color:var(--amber); font-weight:600;}
+.dm-status{width:100%; font-size:12px; font-family:'JetBrains Mono',monospace; margin-top:2px;}
+.dm-status.ok{color:var(--green);}
+.dm-status.err{color:var(--red);}
+.dm-status.warn{color:var(--amber);}
+table{width:100%; border-collapse:collapse; font-size:13px; min-width:1100px;}
+th{text-align:left; font-family:'JetBrains Mono',monospace; font-weight:400; font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:1px solid var(--line);}
+td{padding:10px; border-bottom:1px solid #1A2536; vertical-align:top;}
+tr:hover td{background:#0E1826;}
+.badge{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap;}
+.b-customer{background:var(--green-dim); color:var(--green);}
+.b-active{background:var(--blue-dim); color:var(--blue);}
+.b-dormant{background:var(--teal-dim); color:var(--teal);}
+.b-blocked{background:var(--gray-dim); color:var(--gray);}
+.b-lost{background:var(--red-dim); color:var(--red);}
+.foot{margin-top:24px; font-size:11.5px; color:var(--text3); font-family:'JetBrains Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">TP Logistics · Business Development</div>
+  <h1 class="hero-title">Dashboard เจาะฐานลูกค้าโรงงานเครื่องใช้ไฟฟ้า</h1>
+  <p class="hero-sub">แอร์ · ตู้เย็น · เครื่องซักผ้า — ฐานการผลิตในไทย และสถานะ pipeline ล่าสุด (อัปเดต 3 ก.ค. 2569)</p>
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="data-mgmt">
+    <div class="dm-text">
+      <b>จัดการข้อมูล</b> — ดาวน์โหลดเทมเพลต (มีข้อมูลปัจจุบันอยู่แล้ว แก้ต่อได้เลย) แล้วอัปโหลดกลับเข้ามาเพื่ออัปเดต Dashboard
+    </div>
+    <div class="dm-actions">
+      <button class="dm-btn" id="downloadTemplate">⬇ ดาวน์โหลดเทมเพลต (.xlsx)</button>
+      <button class="dm-btn dm-btn-primary" id="uploadTrigger">⬆ อัปโหลดข้อมูลใหม่ (.xlsx)</button>
+      <input type="file" id="uploadFile" accept=".xlsx,.xls" style="display:none">
+    </div>
+    <div class="dm-status" id="dmStatus"></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-title">แผนที่ฐานการผลิต (พิกัดจริง)</div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--green)"></span>เป็นลูกค้าแล้ว</span>
+        <span><span class="dot" style="background:var(--teal)"></span>ลูกค้าเดิม-ไม่ได้ใช้งาน</span>
+        <span><span class="dot" style="background:var(--blue)"></span>กำลังเสนอราคา/ติดตาม</span>
+        <span><span class="dot" style="background:var(--gray)"></span>ติดต่อผู้มีอำนาจไม่ได้</span>
+        <span><span class="dot" style="background:var(--red)"></span>แข่งขันราคาไม่ได้/ปิดโอกาส</span>
+      </div>
+      <div id="map"></div>
+      <div class="map-note">พิกัดอิงตำแหน่งนิคมอุตสาหกรรม/ตำบลที่ตั้งโรงงาน ไม่ใช่เลขที่อาคารแม่นยำระดับหลังคา คลิกจุดเพื่อดูรายละเอียด</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">สรุป Pipeline ตามสถานะ</div>
+      <div id="funnel"></div>
+      <div class="unknown-list">
+        <div class="panel-title" style="margin-bottom:8px;">ยังไม่ทราบที่ตั้งโรงงาน / รอยืนยัน (ไม่แสดงบนแผนที่)</div>
+        <div id="unknownList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="panel-title">รายชื่อทั้งหมด</div>
+    <div class="filters">
+      <button class="clear-btn" id="clearFilters">ล้างตัวกรองทั้งหมด</button>
+    </div>
+    <div class="filter-group-label">สถานะ (เลือกได้หลายรายการ)</div>
+    <div class="filters" id="statusFilters"></div>
+    <div class="result-count" id="resultCount"></div>
+    <table>
+      <thead>
+        <tr><th style="width:26px">#</th><th>แบรนด์</th><th>ที่ตั้งโรงงาน</th><th>บริษัท</th><th>สถานะ</th><th>สถานะปัจจุบัน / Response ลูกค้า</th><th>Next Step</th><th>Next Bidding</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="foot">TP Logistics internal use · ข้อมูลจากการติดต่อลูกค้าจริง + งานวิจัยฐานโรงงาน (บางรายการยังต้องยืนยัน) · แผนที่: OpenStreetMap / CARTO</div>
+</div>
+
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const STATUS_META = {
+  customer: {label:'เป็นลูกค้าแล้ว', color:'#4ADE80', cls:'b-customer'},
+  dormant:  {label:'ลูกค้าเดิม ไม่ได้ใช้งาน', color:'#34D3C4', cls:'b-dormant'},
+  active:   {label:'กำลังเสนอราคา/ติดตาม', color:'#5AA9FF', cls:'b-active'},
+  blocked:  {label:'ติดต่อผู้มีอำนาจไม่ได้', color:'#8C97B0', cls:'b-blocked'},
+  lost:     {label:'แข่งขันไม่ได้/ปิดโอกาส', color:'#F87171', cls:'b-lost'}
+};
+
+const LOC_COORDS = {
+  'นิคมฯ บางกะดี (ปทุมธานี)': [13.975,100.547],
+  'ถ.ติวานนท์ (นนทบุรี)': [13.875,100.52],
+  'งามวงศ์วาน (นนทบุรี)': [13.859,100.535],
+  'นิคมฯ ลาดกระบัง (กทม.)': [13.728,100.747],
+  'แพรกษา (สมุทรปราการ)': [13.57,100.62],
+  'ตำหรุ (สมุทรปราการ)': [13.54,100.73],
+  'บางนา กม.19': [13.61,100.73],
+  'Rhenus กม.19': [13.61,100.73],
+  'อมตะนคร ชลบุรี': [13.36,101.05],
+  'นิคมฯ เวลโกรว์ (กม.37)': [13.534,100.996],
+  'อมตะซิตี้ ชลบุรี': [13.33,101.06],
+  'นิคมฯ สหพัฒน์ ศรีราชา (ชลบุรี)': [13.165,100.95],
+  'ปลวกแดง (ระยอง)': [12.96,101.21],
+  'WHA อีสเทิร์นซีบอร์ด 3 (ชลบุรี)': [13.05,101.15],
+  'อมตะซิตี้ ระยอง': [12.85,101.3],
+  'นิคมฯ ปิ่นทอง 5 (ชลบุรี)': [13.02,101.16],
+  'อ.ปลวกแดง จ.ระยอง': [12.96,101.21],
+  'อ.ปลวกแดง ระยอง': [12.96,101.21],
+  'นิคมฯ กบินทร์บุรี (ปราจีนบุรี)': [13.96,101.71],
+  'อำเภอกบินทร์บุรี ปราจีนบุรี': [13.96,101.71],
+  'ศรีมหาโพธิ (ปราจีนบุรี)': [14.0,101.48],
+  'นิคมฯ แหลมฉบัง (ชลบุรี)': [13.08,100.9],
+  'อมตะซิตี้ ไทย-จีน (ระยอง)': [12.83,101.31],
+  'TIP 5 บางพลี (สมุทรปราการ)': [13.61,100.74],
+  'นนทบุรี (แบรนด์ไทย)': [13.86,100.49],
+  'อ.กระทุ่มแบน สมุทรสาคร': [13.65,100.27],
+  'นิคมฯ เวลโกรว์ ฉะเชิงเทรา': [13.534,100.996],
+  'อ.ลำลูกกา ปทุมธานี': [14.0,100.73],
+  'อ.บางพลี สมุทรปราการ': [13.61,100.74],
+  'Ban Khai, Hemaraj (ระยอง)': [12.75,101.22],
+  'วังน้อย อยุธยา': [14.21,100.67],
+  'อำเภอพรหมบุรี จังหวัดสิงห์บุรี 1': [14.83,100.4]
+};
+
+const PROVINCE_MAP = {
+  'นิคมฯ บางกะดี (ปทุมธานี)': 'ปทุมธานี',
+  'ถ.ติวานนท์ (นนทบุรี)': 'นนทบุรี',
+  'งามวงศ์วาน (นนทบุรี)': 'นนทบุรี',
+  'นิคมฯ ลาดกระบัง (กทม.)': 'กรุงเทพฯ',
+  'แพรกษา (สมุทรปราการ)': 'สมุทรปราการ',
+  'ตำหรุ (สมุทรปราการ)': 'สมุทรปราการ',
+  'บางนา กม.19': 'สมุทรปราการ',
+  'อมตะนคร ชลบุรี': 'ชลบุรี',
+  'นิคมฯ เวลโกรว์ (กม.37)': 'ฉะเชิงเทรา',
+  'อมตะซิตี้ ชลบุรี': 'ชลบุรี',
+  'นิคมฯ สหพัฒน์ ศรีราชา (ชลบุรี)': 'ชลบุรี',
+  'ปลวกแดง (ระยอง)': 'ระยอง',
+  'WHA อีสเทิร์นซีบอร์ด 3 (ชลบุรี)': 'ชลบุรี',
+  'อมตะซิตี้ ระยอง': 'ระยอง',
+  'นิคมฯ ปิ่นทอง 5 (ชลบุรี)': 'ชลบุรี',
+  'อ.ปลวกแดง จ.ระยอง': 'ระยอง',
+  'นิคมฯ กบินทร์บุรี (ปราจีนบุรี)': 'ปราจีนบุรี',
+  'ศรีมหาโพธิ (ปราจีนบุรี)': 'ปราจีนบุรี',
+  'นิคมฯ แหลมฉบัง (ชลบุรี)': 'ชลบุรี',
+  'อมตะซิตี้ ไทย-จีน (ระยอง)': 'ระยอง',
+  'TIP 5 บางพลี (สมุทรปราการ)': 'สมุทรปราการ',
+  'นนทบุรี (แบรนด์ไทย)': 'นนทบุรี',
+  'อ.กระทุ่มแบน สมุทรสาคร': 'สมุทรสาคร',
+  'นิคมฯ เวลโกรว์ ฉะเชิงเทรา': 'ฉะเชิงเทรา',
+  'อ.ลำลูกกา ปทุมธานี': 'ปทุมธานี',
+  'อ.บางพลี สมุทรปราการ': 'สมุทรปราการ',
+  'Ban Khai, Hemaraj (ระยอง)': 'ระยอง'
+};
+
+const DATA = [
+{brand:'Mitsubishi Heavy Duty',cat:'Air Conditioner',company:'บริษัท มหาจักรดีเวลอปเมนท์ จำกัด',loc:'นิคมฯ ลาดกระบัง (กทม.)',status:'dormant',response:'เป็นลูกค้าเดิม แต่หยุดใช้งาน (ติดค่ารถเข้ารับ)',nextStep:'เจรจาปรับโครงสร้างค่ารถเข้ารับใหม่ เพื่อ reactivate ลูกค้า',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Haier-Candy',cat:'Air Conditioner',company:'บริษัท ไฮเออร์ อีเล็คทริค (ประเทศไทย) จำกัด',loc:'WHA อีสเทิร์นซีบอร์ด 3 (ชลบุรี)',status:'customer',response:'เป็นลูกค้า TP อยู่แล้ว',nextStep:'รักษาความสัมพันธ์ ติดตามวันหมดอายุสัญญาเพื่อต่อสัญญา',nextBidding:'สัญญา 1 ปี (ติดตามวันหมดอายุ)'},
+{brand:'Hitachi (Achelik)',cat:'Air Conditioner',company:'บริษัท อาร์เซลิก ฮิตาชิ โฮม แอพพลายแอนซ์ เซลส์',loc:'นิคมฯ กบินทร์บุรี (ปราจีนบุรี)',status:'customer',response:'เป็นลูกค้า TP อยู่แล้ว',nextStep:'รักษาความสัมพันธ์ ติดตามวันหมดอายุสัญญาเพื่อต่อสัญญา',nextBidding:'สัญญา 1.03.69 - 28.02.70'},
+{brand:'Carrier',cat:'Air Conditioner',company:'บริษัท แคเรียร์ (ประเทศไทย) จำกัด',loc:'นิคมฯ บางกะดี (ปทุมธานี)',status:'lost',response:'ลูกค้าใช้ SCGJWD คลัง+ขนส่ง',nextStep:'หาช่องทาง contact ใหม่ผ่าน SCGJWD หรือสำนักงานใหญ่ Carrier',nextBidding:'bidding - ยังไม่ทราบวันที่'},
+{brand:'Star Aire',cat:'Air Conditioner',company:'บริษัท สตาร์ (ประเทศไทย) จำกัด',loc:'ถ.ติวานนท์ (นนทบุรี)',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'โทรตามซ้ำ / หาช่องทางผ่าน LinkedIn หรือเว็บไซต์บริษัท',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Trane',cat:'Air Conditioner',company:'บริษัท แอร์โค จำกัด',loc:'บางนา กม.19',status:'blocked',response:'ติดต่อผู้มีอำนาจไม่ได้',nextStep:'ติดต่อสำนักงานใหญ่ Trane (บริษัท แอร์โค) โดยตรง',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Sharp',cat:'Air Conditioner',company:'บริษัท ชาร์ป ไทย จำกัด',loc:'นิคมฯ เวลโกรว์ (กม.37)',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Hitachi (Bosch Home)',cat:'Air Conditioner',company:'บริษัท บ๊อช โฮม คอมฟอร์ท คอมโพเนนท์ (ประเทศไทย) จำกัด',loc:'อ.ปลวกแดง จ.ระยอง',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Panasonic',cat:'Air Conditioner',company:'บริษัท พานาโซนิค โซลูชั่นส์ (ประเทศไทย) จำกัด',loc:'นิคมฯ เวลโกรว์ ฉะเชิงเทรา',status:'blocked',response:'ติดต่อไม่ได้ ส่ง company profile ทางอีเมลแล้ว',nextStep:'ติดตามผล / หา contact ใหม่',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'CHiQ',cat:'Air Conditioner',company:'บริษัท ฉางหง อิเล็คทริค จำกัด',loc:'ยังไม่มีข้อมูล',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'MAVELL',cat:'Air Conditioner',company:'บริษัท มาเวล คอร์ปอเรชั่น จำกัด',loc:'อ.ลำลูกกา ปทุมธานี',status:'active',response:'ส่ง company profile แล้ว / ลูกค้าใช้นิ่ม',nextStep:'ติดตามผลหลังส่ง Profile',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'YOKE',cat:'Air Conditioner',company:'บริษัท บ๊อช โฮม คอมฟอร์ท คอมโพเนนท์ (ประเทศไทย) จำกัด',loc:'อ.ปลวกแดง ระยอง',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'bidding - ยังไม่ทราบวันที่'},
+{brand:'TASAKI',cat:'Air Conditioner',company:'บริษัท บิทไว้ส์ (ประเทศไทย) จำกัด',loc:'อ.บางพลี สมุทรปราการ',status:'blocked',response:'ติดต่อไม่ได้ (รายชื่อใหม่)',nextStep:'เริ่มต้นหา contact ผู้มีอำนาจครั้งแรก',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Electrolux',cat:'Air Conditioner',company:'บริษัท อีเลคโทรลักซ์ ประเทศไทย จำกัด',loc:'Ban Khai, Hemaraj (ระยอง)',status:'customer',response:'เป็นลูกค้า TP อยู่แล้ว / ผ่านเคอรี่โลจิสติกส์',nextStep:'รักษาความสัมพันธ์',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Toshiba',cat:'Air Conditioner',company:'บริษัท โตชิบา ไทยแลนด์ จำกัด',loc:'นิคมฯ บางกะดี (ปทุมธานี)',status:'lost',response:'เสนอราคาแล้ว แข่งขันไม่ได้ (ลูกค้าใช้คลัง KNS)',nextStep:'ทบทวนโครงสร้างต้นทุนใหม่ก่อนเสนอราคารอบถัดไป',nextBidding:'bidding - ยังไม่ทราบวันที่'},
+{brand:'UNI-Aire',cat:'Air Conditioner',company:'บจก. ยูนิแอร์ คอร์ปอเรชั่น',loc:'แพรกษา (สมุทรปราการ)',status:'lost',response:'ติดต่อไม่ได้ / ราคาแข่งขันไม่ได้',nextStep:'พักโอกาสชั่วคราว รอทบทวนโครงสร้างราคา',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Mitsubishi Electric',cat:'Air Conditioner',company:'บริษัท มิตซูบิชิ อีเล็คทริค คอนซูมเมอร์ โปรดักส์',loc:'อมตะนคร ชลบุรี',status:'lost',response:'เสนอราคาแล้ว แข่งขันไม่ได้ ปริมาณงานน้อยไม่รับเพิ่ม',nextStep:'เตรียมข้อเสนอใหม่ให้พร้อมก่อนรอบ bid พ.ย.-ก.พ.',nextBidding:'สัญญา 1 ปี เริ่ม เม.ย. (bid พ.ย.-ก.พ.)'},
+{brand:'DAIKIN',cat:'Air Conditioner',company:'บริษัท ไดกิ้น อินดัสทรีส์ (ประเทศไทย) จำกัด',loc:'อมตะซิตี้ ชลบุรี',status:'lost',response:'ราคาแข่งขันไม่ได้ (ลูกค้าใช้ MS)',nextStep:'ทบทวนราคาสู้ MS หรือรอจังหวะต่อสัญญาใหม่',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'amena',cat:'Air Conditioner',company:'บริษัท ลาโก้ มาร์เก็ตติ้ง จำกัด',loc:'ศรีมหาโพธิ (ปราจีนบุรี)',status:'lost',response:'ราคาแข่งขันไม่ได้ (สูงกว่าปัจจุบัน 100,000 บ./เดือน)',nextStep:'พักโอกาสไว้ก่อน เว้นแต่ปรับโครงสร้างราคาลงมาก',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Central Air',cat:'Air Conditioner',company:'บริษัท เซ็นทรัลแอร์ (ประเทศไทย) จำกัด',loc:'นนทบุรี (แบรนด์ไทย)',status:'lost',response:'ขนส่งเอง (เหมาคัน B2B)',nextStep:'พักโอกาส ไม่ใช้ 3PL',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Central Air (ผู้ผลิต)',cat:'Air Conditioner',company:'บริษัท ทรัพย์สุขสิริ จำกัด',loc:'อ.กระทุ่มแบน สมุทรสาคร',status:'lost',response:'ใช้รถเอกชนขนส่งเอง',nextStep:'พักโอกาส เว้นแต่มีงานเสริมนอกสัญญาหลัก',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Carrier (ผู้ผลิตบางรุ่น)',cat:'Air Conditioner',company:'บริษัท วินัยเอ็นจิเนียริ่ง อินดัสตรี(1997) จำกัด',loc:'อ.กระทุ่มแบน สมุทรสาคร',status:'lost',response:'ใช้รถตัวเองส่งของ',nextStep:'พักโอกาสชั่วคราว',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Saijo-denki',cat:'Air Conditioner',company:'บริษัท ซัยโจ เด็นกิ อินเตอร์เนชั่นแนล จำกัด',loc:'งามวงศ์วาน (นนทบุรี)',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตามผลหลังส่ง Profile',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Eminent Air',cat:'Air Conditioner',company:'บริษัท อีมิแน้นท์แอร์ (ประเทศไทย) จำกัด',loc:'ตำหรุ (สมุทรปราการ)',status:'active',response:'ส่ง company profile แล้ว / ลูกค้าใช้นิ่ม&แฟลช',nextStep:'ติดตามผลหลังส่ง Profile',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Samsung',cat:'Air Conditioner',company:'บริษัท ไทยซัมซุง อิเลคโทรนิคส์ จำกัด',loc:'นิคมฯ สหพัฒน์ ศรีราชา (ชลบุรี)',status:'active',response:'อยู่ระหว่างเสนอราคา (ติดต่อคุณเบล)',nextStep:'ติดตามผลเสนอราคาใกล้ชิด ก่อนสัญญาเริ่ม ก.ค.69',nextBidding:'สัญญา 1+1 ปี เริ่มเดือน 7 (2569-2570)'},
+{brand:'LG',cat:'Air Conditioner',company:'บริษัท แอลจี อีเลคทรอนิกส์ (ประเทศไทย) จำกัด',loc:'ปลวกแดง (ระยอง)',status:'active',response:'ต้องนำเสนอแบบ CBM เท่านั้น',nextStep:'จัดทำใบเสนอราคาแบบ CBM ให้ครบ ส่งใหม่',nextBidding:'สัญญา 1 ปี (ติดตามวันหมดอายุ)'},
+{brand:'Hisense',cat:'Air Conditioner',company:'บริษัท ไฮเซ่นส์ อินเตอร์เนชั่นแนล (ประเทศไทย) จำกัด',loc:'อมตะซิตี้ ระยอง',status:'active',response:'ต้องเสนอ CBM ผ่านคลัง SITC เท่านั้น',nextStep:'จัดทำใบเสนอราคาแบบ CBM ผ่านคลัง SITC',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Midea',cat:'Air Conditioner',company:'บริษัท ไมเดีย รีฟริจเจอเรชั่น อีควิปเมนท์ (ไทยแลนด์) จำกัด',loc:'นิคมฯ ปิ่นทอง 5 (ชลบุรี)',status:'active',response:'อยู่ระหว่างนำเสนอบริการจัดส่ง + เชื่อมต่อ API',nextStep:'ติดตามความคืบหน้าการเชื่อมต่อ API ให้ปิดดีล',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'General (Fujitsu)',cat:'Air Conditioner',company:'บริษัท ฟูจิตสึ เจเนอรัล (ประเทศไทย) จำกัด',loc:'นิคมฯ แหลมฉบัง (ชลบุรี)',status:'active',response:'ต้องเสนอ CBM + SLA Next day เท่านั้น',nextStep:'เตรียมข้อเสนอ SLA Next Day ให้พร้อมส่ง',nextBidding:'สัญญา 1 ปี ไม่ระบุกำหนดเวลาชัดเจน'},
+{brand:'TCL',cat:'Air Conditioner',company:'บริษัท ทีซีแอล อิเล็กทรอนิกส์ (ไทยแลนด์) จำกัด',loc:'ยังหาข้อมูลไม่ได้',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตามผลหลังส่ง Profile ก่อนรอบ bid พ.ค.-มิ.ย.',nextBidding:'สัญญาเริ่ม ก.ค. (bid พ.ค.-มิ.ย.)'},
+{brand:'Aux (B2C)',cat:'Air Conditioner',company:'บริษัท เอยูเอ็กซ์ คลาวด์ คอมเมิร์ซ (ประเทศไทย) จำกัด',loc:'อมตะซิตี้ ไทย-จีน (ระยอง)',status:'active',response:'ส่ง company profile ทางอีเมลแล้ว',nextStep:'ติดตามผลหลังส่ง Profile',nextBidding:'สัญญา 1 ปี'},
+{brand:'Aux (B2B)',cat:'Air Conditioner',company:'บริษัท เอ็กซ์ทรอน แอร์-คอนดิชั่นนิ่ง แมนูแฟคเจอ',loc:'อมตะซิตี้ ไทย-จีน (ระยอง)',status:'active',response:'ส่ง company profile ทางอีเมลแล้ว',nextStep:'โทรติดต่อฝ่ายจัดซื้อโดยตรง เจรจางาน OEM หลายแบรนด์',nextBidding:'bidding - ยังไม่ทราบวันที่'},
+{brand:'Casper',cat:'Air Conditioner',company:'บริษัท แคสเปอร์ อีเล็คทริค (ไทยแลนด์) จำกัด',loc:'TIP 5 บางพลี (สมุทรปราการ)',status:'active',response:'ต้องเสนอ CBM เท่านั้น /เสนอราคาผ่านชิโนทรานส์',nextStep:'จัดทำใบเสนอราคาแบบ CBM',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'XIAOMI',cat:'Air Conditioner',company:'บริษัท เสียวหมี่ เทคโนโลยี (ประเทศไทย) จำกัด',loc:'TIP 5 บางพลี (สมุทรปราการ)',status:'active',response:'อยู่ระหว่างเสนอราคา',nextStep:'ติดตามผลก่อนรอบ bid พ.ย.-ธ.ค.',nextBidding:'สัญญาเริ่ม ม.ค. (bid พ.ย.-ธ.ค.)'},
+{brand:'Gree',cat:'Air Conditioner',company:'บริษัท กรี อิเลคทริค (ไทยแลนด์) จำกัด',loc:'ยังไม่มีข้อมูล',status:'active',response:'ปริมาณงานน้อย ต้องเสนอ CBM เท่านั้น',nextStep:'จัดทำใบเสนอราคา CBM ไว้ล่วงหน้า รอปริมาณงานเพิ่ม',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Singer',cat:'Air Conditioner',company:'บริษัท ซิงเกอร์ประเทศไทย จำกัด (มหาชน)',loc:'นำเข้า',status:'customer',response:'เสนอราคา บาท/กก.  / เสนอราคาผ่าน    บริษัท โลจิสตี๊ด คอนแทรค โลจิสติคส์ (ประเทศไทย) จำกัด (มหาชน)',nextStep:'เป็นลูกค้า TPL อยู่แล้ว โดยทาง คลัง โลจิติ๊สเป็นคนทำคลังพร้อมขนส่ง',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Samsung',cat:'Refrigerator',company:'บริษัท ไทยซัมซุง อิเลคโทรนิคส์ จำกัด',loc:'นิคมฯ สหพัฒน์ ศรีราชา (ชลบุรี)',status:'active',response:'Top 5 ตลาดไทย - ต้องยืนยันว่าผลิตในไทย',nextStep:'สอบถามในการคุยเสนอราคาสายแอร์ครั้งเดียวกัน (ติดต่อคุณเบล)',nextBidding:'ไม่มีข้อมูล'},
+{brand:'LG',cat:'Refrigerator',company:'บริษัท แอลจี อีเลคทรอนิกส์ (ประเทศไทย) จำกัด',loc:'ปลวกแดง (ระยอง)',status:'active',response:'ต้องนำเสนอแบบ CBM เท่านั้น',nextStep:'ต้องเสนอ CBM สายแอร์อยู่แล้ว ต่อยอดเสนอตู้เย็นพร้อมกัน',nextBidding:'สัญญา 1 ปี (ติดตามวันหมดอายุ)'},
+{brand:'Toshiba',cat:'Refrigerator',company:'บริษัท โตชิบา ไลฟ์สไตล์ (ประเทศไทย) จำกัด',loc:'นิคมฯ บางกะดี (ปทุมธานี)',status:'active',response:'ยืนยันแล้ว - ส่งออก 90% ของกำลังผลิต',nextStep:'ใช้ contact เดิม (สายแอร์) เสนอ cross-sell ตู้เย็นเพิ่ม',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Hitachi',cat:'Refrigerator',company:'บริษัท ฮิตาชิ เซลส์ (ประเทศไทย) จำกัด',loc:'นิคมฯ กบินทร์บุรี (ปราจีนบุรี)',status:'blocked',response:'ต้องยืนยันไลน์ผลิต',nextStep:'สอบถามเพิ่มเติมพร้อมการติดต่อสายตู้เย็น/แอร์',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Mitsubishi Electric',cat:'Refrigerator',company:'บริษัท มิตซูบิชิ อีเล็คทริค กันยงวัฒนา จำกัด',loc:'อมตะนคร ชลบุรี',status:'lost',response:'เสนอราคาแล้ว แข่งขันไม่ได้ ปริมาณงานน้อยไม่รับเพิ่ม',nextStep:'เตรียมข้อเสนอใหม่ให้พร้อมก่อนรอบ bid พ.ย.-ก.พ.',nextBidding:'สัญญา 1 ปี เริ่ม เม.ย. (bid พ.ย.-ก.พ.)'},
+{brand:'Panasonic',cat:'Refrigerator',company:'บริษัท พานาโซนิค โซลูชั่นส์ (ประเทศไทย) จำกัด',loc:'นิคมฯ เวลโกรว์ ฉะเชิงเทรา',status:'blocked',response:'ต้องยืนยันไลน์ผลิต',nextStep:'โทรตรวจสอบ',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Sharp',cat:'Refrigerator',company:'บริษัท ชาร์ป ไทย จำกัด',loc:'นิคมฯ เวลโกรว์ (กม.37)',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Haier',cat:'Refrigerator',company:'บริษัท ไฮเออร์ อีเล็คทริค (ประเทศไทย) จำกัด',loc:'นิคมฯ กบินทร์บุรี (ปราจีนบุรี)',status:'customer',response:'เป็นลูกค้า TP อยู่แล้ว',nextStep:'รักษาความสัมพันธ์ ติดตามวันหมดอายุสัญญาเพื่อต่อสัญญา',nextBidding:'สัญญา 1 ปี (ติดตามวันหมดอายุ)'},
+{brand:'Hisense',cat:'Refrigerator',company:'บริษัท ไฮเซ่นส์ อินเตอร์เนชั่นแนล (ประเทศไทย) จำกัด',loc:'อมตะซิตี้ ระยอง',status:'active',response:'ต้องเสนอ CBM ผ่านคลัง SITC เท่านั้น',nextStep:'จัดทำใบเสนอราคาแบบ CBM ผ่านคลัง SITC',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Midea',cat:'Refrigerator',company:'บริษัท ไมเดีย รีฟริจเจอเรชั่น อีควิปเมนท์ (ไทยแลนด์) จำกัด',loc:'นิคมฯ ปิ่นทอง 5 (ชลบุรี)',status:'active',response:'ยืนยันแล้ว - โรงงานแยกในคอมเพล็กซ์เดียวกับแอร์',nextStep:'ใช้ contact เดิมที่กำลังเสนอราคาสายแอร์ ต่อยอดเสนอตู้เย็นพร้อมกัน',nextBidding:'ไตตันโค อินเตอร์เนชั่นแนล จํากัด'},
+{brand:'TCL',cat:'Refrigerator',company:'บริษัท ทีซีแอล อิเล็กทรอนิกส์ (ไทยแลนด์) จำกัด',loc:'ยังหาข้อมูลไม่ได้',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตามผลหลังส่ง Profile ก่อนรอบ bid พ.ค.-มิ.ย.',nextBidding:'สัญญาเริ่ม ก.ค. (bid พ.ค.-มิ.ย.)'},
+{brand:'CHiQ',cat:'Refrigerator',company:'บริษัท ฉางหง อิเล็คทริค จำกัด',loc:'ยังไม่มีข้อมูล',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Bosch',cat:'Refrigerator',company:'บริษัท บีเอสเอช โฮม แอพพลายแอนซ์ จำกัด',loc:'อำเภอกบินทร์บุรี ปราจีนบุรี',status:'active',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Electrolux',cat:'Refrigerator',company:'บริษัท อีเลคโทรลักซ์ ประเทศไทย จำกัด',loc:'Ban Khai, Hemaraj (ระยอง)',status:'customer',response:'เป็นลูกค้า TP อยู่แล้ว / ผ่านเคอรี่โลจิสติกส์',nextStep:'รักษาความสัมพันธ์',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Beko',cat:'Refrigerator',company:'บริษัท เบโคไทย จำกัด',loc:'ยังไม่มีข้อมูล',status:'lost',response:'บริษัทปิดกิจการในไทย - ไม่มีโอกาสทางธุรกิจ',nextStep:'ปิดโอกาสถาวร - ไม่ต้องติดตามต่อ',nextBidding:'ปิดกิจการ (เลิกกิจการในไทยแล้ว)'},
+{brand:'Gorenje',cat:'Refrigerator',company:'กอเรนเย',loc:'สินค้านำเข้า',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'หา contact ใหม่'},
+{brand:'SMEG (Mex)',cat:'Refrigerator',company:'บริษัท เพ็น เค อินเตอร์เทรดดิ้ง จำกัด',loc:'นำเข้าจากอิตาลี',status:'active',response:'ให้เข้าพบช่วงอาทิตย์หน้า',nextStep:'สัญญา 1 ปี เริ่มสัญญาตามการนำเสนอราคา',nextBidding:'สัญญา 1 ปี เริ่มสัญญาตามการนำเสนอราคา'},
+{brand:'Fisher & Paykel',cat:'Refrigerator',company:'ฟิชเชอร์ แอนด์ พายเคล',loc:'นิคมอุตสาหกรรมอมตะซิตี้',status:'active',response:'ติดต่ามอีกครั้ง',nextStep:'การนำเสนอบิดดิ้ง ให้ติดต่อผ่าน ประเทศนิวซีแลน',nextBidding:'Bidding'},
+{brand:'Liebherr',cat:'Refrigerator',company:'ลีบแฮร์',loc:'สินค้านำเข้า',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตาม และนำเสนอราคาอีกครั้ง  ภายใต้แบรนด์  Hafele',nextBidding:'ไม่มีสัญญาสามารถนำเสนอราคาได้เลย'},
+{brand:'Whirlpool',cat:'Refrigerator',company:'บริษัท เวิร์ลพูล (ประเทศไทย) จำกัด',loc:'นำเข้า',status:'blocked',response:'ส่ง company profile แล้ว',nextStep:'ใช้รถของตัวเองในการนำส่งทั่วประเทศ เพราะมมีบริการติดตั้งด้วย โดย  บริษัท ไตตันโค อินเตอร์เนชั่นแนล จํากัด',nextBidding:'ไม่มีข้อมูล เพราะจัดส่งเอง'},
+{brand:'Candy',cat:'Refrigerator',company:'แคนดี้ ฮูเวอร์',loc:'นำเข้า',status:'customer',response:'ภายใต้แบรนด์ Haier (ไฮเออร์)',nextStep:'สัญญา 1 ปี     จะเริ่มสัญญา  1 ม.ค. ของทุกปี  รอบบิดดิ้ง  จะประมาณ เดือน 11',nextBidding:'สัญญา 1 ปี     จะเริ่มสัญญา  1 ม.ค. ของทุกปี  รอบบิดดิ้ง  จะประมาณ เดือน 11'},
+{brand:'Teka',cat:'Refrigerator',company:'บริษัท เตก้า (ประเทศไทย) จำกัด',loc:'นำเข้า',status:'lost',response:'ยังไม่ให้ส่งข้อมูลให้ ต้องรอติดต่อทางผู้จัดการ เบอร์ 020587874',nextStep:'ต้องติดตามเรื่อย ๆ',nextBidding:'มีสัญญา แต่สัญญาจะนาน จะทำอีกครั้งเมื่อพบปัญหากับขนส่ง หรือต้องหาขนส่งใหม่'},
+{brand:'Hafele',cat:'Refrigerator',company:'บริษัท เฮเฟเล่ (ประเทศไทย) จำกัด',loc:'สินค้านำเข้า',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตาม และนำเสนอราคาอีกครั้ง',nextBidding:'ไม่มีสัญญาสามารถนำเสนอราคาได้เลย'},
+{brand:'Xiaomi',cat:'Refrigerator',company:'บริษัท เสียวหมี่ เทคโนโลยี (ประเทศไทย) จำกัด',loc:'TIP 5 บางพลี (สมุทรปราการ)',status:'active',response:'อยู่ระหว่างเสนอราคา',nextStep:'ติดตามผลก่อนรอบ bid พ.ย.-ธ.ค.',nextBidding:'สัญญาเริ่ม ม.ค. (bid พ.ย.-ธ.ค.)'},
+{brand:'AUX',cat:'Refrigerator',company:'บริษัท เอยูเอ็กซ์ (ประเทศไทย) จำกัด',loc:'อมตะซิตี้ ไทย-จีน (ระยอง)',status:'active',response:'ส่ง company profile ทางอีเมลแล้ว',nextStep:'ติดตามผลหลังส่ง Profile',nextBidding:'สัญญา 1 ปี'},
+{brand:'Comfee',cat:'Refrigerator',company:'บริษัท คอมฟี่ (ประเทศไทย) จำกัด',loc:'นิคมฯ ปิ่นทอง 5 (ชลบุรี)',status:'active',response:'แบรนด์ในเครือ Midea - โรงงานเดียวกับ Midea',nextStep:'ใช้ contact เดียวกับ Midea ต่อยอดเสนอตู้เย็นพร้อมกัน',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Aconatic (B2B)',cat:'Refrigerator',company:'บริษัท ไฮไฟ โอเรียนท์ ไทย จำกัด (มหาชน)',loc:'วังน้อย อยุธยา',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตามผลก่อนรอบ bid พ.ย.-ธ.ค.',nextBidding:'สัญญา 1 ปี เริ่ม Bidding เดือน ม.ค. (เริ่มbig พ.ย.--ธ.ค.)'},
+{brand:'Aconatic (B2C)',cat:'Refrigerator',company:'บริษัท ไฮไฟ โอเรียนท์ ไทย จำกัด (มหาชน)',loc:'วังน้อย อยุธยา',status:'active',response:'อยู่ระหว่างเสนอราคา',nextStep:'ติดตามผล',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Singer',cat:'Refrigerator',company:'บริษัท ซิงเกอร์ประเทศไทย จำกัด (มหาชน)',loc:'นำเข้า',status:'customer',response:'เสนอราคา บาท/กก.  / เสนอราคาผ่าน    บริษัท โลจิสตี๊ด คอนแทรค โลจิสติคส์ (ประเทศไทย) จำกัด (มหาชน)',nextStep:'เป็นลูกค้า TPL อยู่แล้ว โดยทาง คลัง โลจิติ๊สเป็นคนทำคลังพร้อมขนส่ง',nextBidding:'เสนอราคาได้เลย'},
+{brand:'ตู้เย็นเชิงพาณิชย์บางรุ่น',cat:'Refrigerator',company:'บริษัท ลัคกี้เฟลม จำกัด',loc:'สินค้านำเข้า',status:'lost',response:'ใช้รถตัวเอง 06.07.2026',nextStep:'ติดตามเพื่อนำเสนออีกครั้ง  กรณีที่ลูกค้าขยายตลาดเพิ่มช่องทางขายออนไลน์',nextBidding:'ใช้รถขนส่งของตัวเอง'},
+{brand:'ตู้เย็นเชิงพาณิชย์',cat:'Refrigerator',company:'บริษัท ซันเดน อินเตอร์คูล (ประเทศไทย) จำกัด (มหาชน)',loc:'อำเภอพรหมบุรี จังหวัดสิงห์บุรี 1',status:'lost',response:'ส่ง company profile แล้ว',nextStep:'กิจกรรมเป็นเหมาคัน ใช้รถของตัวเองในการจัดส่ง',nextBidding:'ใช้รถขนส่่งตัวเอง'},
+{brand:'Samsung',cat:'Washing Machine',company:'บริษัท ไทยซัมซุง อิเลคโทรนิคส์ จำกัด',loc:'นิคมฯ สหพัฒน์ ศรีราชา (ชลบุรี)',status:'active',response:'Top 5 ตลาดไทย - ต้องยืนยันว่าผลิตในไทย',nextStep:'สอบถามในการคุยเสนอราคาสายแอร์ครั้งเดียวกัน (ติดต่อคุณเบล)',nextBidding:'ไม่มีข้อมูล'},
+{brand:'LG',cat:'Washing Machine',company:'บริษัท แอลจี อีเลคทรอนิกส์ (ประเทศไทย) จำกัด',loc:'ปลวกแดง (ระยอง)',status:'active',response:'ต้องนำเสนอแบบ CBM เท่านั้น',nextStep:'ต้องเสนอ CBM สายแอร์อยู่แล้ว ต่อยอดเสนอเครื่องซักผ้าพร้อมกัน',nextBidding:'สัญญา 1 ปี (ติดตามวันหมดอายุ)'},
+{brand:'Toshiba',cat:'Washing Machine',company:'บริษัท โตชิบา ไลฟ์สไตล์ (ประเทศไทย) จำกัด',loc:'นิคมฯ บางกะดี (ปทุมธานี)',status:'active',response:'ยืนยันแล้ว - ส่งออก 90% ของกำลังผลิต',nextStep:'ใช้ contact เดิม (สายแอร์) เสนอ cross-sell เครื่องซักผ้าเพิ่ม',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Panasonic',cat:'Washing Machine',company:'บริษัท พานาโซนิค โซลูชั่นส์ (ประเทศไทย) จำกัด',loc:'นิคมฯ เวลโกรว์ ฉะเชิงเทรา',status:'blocked',response:'ต้องยืนยันไลน์ผลิต',nextStep:'โทรตรวจสอบ',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Hitachi',cat:'Washing Machine',company:'บริษัท ฮิตาชิ เซลส์ (ประเทศไทย) จำกัด',loc:'นิคมฯ กบินทร์บุรี (ปราจีนบุรี)',status:'blocked',response:'ต้องยืนยันไลน์ผลิต',nextStep:'สอบถามเพิ่มเติมพร้อมการติดต่อสายเครื่องซักผ้า/แอร์',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Sharp',cat:'Washing Machine',company:'บริษัท ชาร์ป ไทย จำกัด',loc:'นิคมฯ เวลโกรว์ (กม.37)',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Haier',cat:'Washing Machine',company:'บริษัท ไฮเออร์ อีเล็คทริค (ประเทศไทย) จำกัด',loc:'นิคมฯ กบินทร์บุรี (ปราจีนบุรี)',status:'customer',response:'เป็นลูกค้า TP อยู่แล้ว',nextStep:'รักษาความสัมพันธ์ ติดตามวันหมดอายุสัญญาเพื่อต่อสัญญา',nextBidding:'สัญญา 1 ปี (ติดตามวันหมดอายุ)'},
+{brand:'Hisense',cat:'Washing Machine',company:'บริษัท ไฮเซ่นส์ อินเตอร์เนชั่นแนล (ประเทศไทย) จำกัด',loc:'อมตะซิตี้ ระยอง',status:'active',response:'ต้องเสนอ CBM ผ่านคลัง SITC เท่านั้น',nextStep:'จัดทำใบเสนอราคาแบบ CBM ผ่านคลัง SITC',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Mitsubishi Electric',cat:'Washing Machine',company:'บริษัท มิตซูบิชิ อีเล็คทริค กันยงวัฒนา จำกัด',loc:'อมตะนคร ชลบุรี',status:'lost',response:'เสนอราคาแล้ว แข่งขันไม่ได้ ปริมาณงานน้อยไม่รับเพิ่ม',nextStep:'เตรียมข้อเสนอใหม่ให้พร้อมก่อนรอบ bid พ.ย.-ก.พ.',nextBidding:'สัญญา 1 ปี เริ่ม เม.ย. (bid พ.ย.-ก.พ.)'},
+{brand:'Electrolux',cat:'Washing Machine',company:'บริษัท อีเลคโทรลักซ์ ประเทศไทย จำกัด',loc:'Ban Khai, Hemaraj (ระยอง)',status:'customer',response:'เป็นลูกค้า TP อยู่แล้ว / ผ่านเคอรี่โลจิสติกส์',nextStep:'รักษาความสัมพันธ์',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'Bosch',cat:'Washing Machine',company:'บริษัท บีเอสเอช โฮม แอพพลายแอนซ์ จำกัด',loc:'Rhenus กม.19',status:'blocked',response:'-',nextStep:'-',nextBidding:'สัญญา 1 ปี'},
+{brand:'Beko',cat:'Washing Machine',company:'บริษัท เบโคไทย จำกัด',loc:'ยังไม่มีข้อมูล',status:'lost',response:'บริษัทปิดกิจการในไทย - ไม่มีโอกาสทางธุรกิจ',nextStep:'ปิดโอกาสถาวร - ไม่ต้องติดตามต่อ',nextBidding:'ปิดกิจการ (เลิกกิจการในไทยแล้ว)'},
+{brand:'Midea',cat:'Washing Machine',company:'บริษัท ไมเดีย รีฟริจเจอเรชั่น อีควิปเมนท์ (ไทยแลนด์) จำกัด',loc:'นิคมฯ ปิ่นทอง 5 (ชลบุรี)',status:'active',response:'ยืนยันแล้ว - โรงงานแยกในคอมเพล็กซ์เดียวกับแอร์',nextStep:'ใช้ contact เดิมที่กำลังเสนอราคาสายแอร์ ต่อยอดเสนอเครื่องซักผ้าพร้อมกัน',nextBidding:'ไม่มีข้อมูล'},
+{brand:'TCL',cat:'Washing Machine',company:'บริษัท ทีซีแอล อิเล็กทรอนิกส์ (ไทยแลนด์) จำกัด',loc:'ยังหาข้อมูลไม่ได้',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตามผลหลังส่ง Profile ก่อนรอบ bid พ.ค.-มิ.ย.',nextBidding:'สัญญาเริ่ม ก.ค. (bid พ.ค.-มิ.ย.)'},
+{brand:'CHiQ',cat:'Washing Machine',company:'บริษัท ฉางหง อิเล็คทริค จำกัด',loc:'ยังไม่มีข้อมูล',status:'blocked',response:'ติดต่อไม่ได้',nextStep:'หา contact ใหม่',nextBidding:'ยังติดต่อผู้มีอำนาจไม่ได้'},
+{brand:'Xiaomi',cat:'Washing Machine',company:'บริษัท เสียวหมี่ เทคโนโลยี (ประเทศไทย) จำกัด',loc:'TIP 5 บางพลี (สมุทรปราการ)',status:'active',response:'อยู่ระหว่างเสนอราคา',nextStep:'ติดตามผลก่อนรอบ bid พ.ย.-ธ.ค.',nextBidding:'สัญญาเริ่ม ม.ค. (bid พ.ย.-ธ.ค.)'},
+{brand:'Comfee',cat:'Washing Machine',company:'บริษัท ไมเดีย รีฟริจเจอเรชั่น อีควิปเมนท์ (ไทยแลนด์) จำกัด (แบรนด์ในเครือ Midea)',loc:'นิคมฯ ปิ่นทอง 5 (ชลบุรี)',status:'active',response:'แบรนด์ในเครือ Midea - โรงงานเดียวกับ Midea',nextStep:'ใช้ contact เดียวกับ Midea ต่อยอดเสนอเครื่องซักผ้าพร้อมกัน',nextBidding:'ไม่มีข้อมูล'},
+{brand:'Whirlpool',cat:'Washing Machine',company:'บริษัท เวิร์ลพูล (ประเทศไทย) จำกัด',loc:'นำเข้า',status:'blocked',response:'ส่ง company profile แล้ว',nextStep:'ใช้รถของตัวเองในการนำส่งทั่วประเทศ เพราะมมีบริการติดตั้งด้วย โดย  บริษัท ไตตันโค อินเตอร์เนชั่นแนล จํากัด',nextBidding:'ไม่มีข้อมูล เพราะจัดส่งเอง'},
+{brand:'Candy',cat:'Washing Machine',company:'กลุ่มแคนดี้ ฮูเวอร์ (ผ่านตัวแทนจำหน่ายในไทย)',loc:'นำเข้า',status:'customer',response:'ภายใต้แบรนด์ Haier (ไฮเออร์)',nextStep:'สัญญา 1 ปี     จะเริ่มสัญญา  1 ม.ค. ของทุกปี  รอบบิดดิ้ง  จะประมาณ เดือน 11',nextBidding:'สัญญา 1 ปี     จะเริ่มสัญญา  1 ม.ค. ของทุกปี  รอบบิดดิ้ง  จะประมาณ เดือน 11'},
+{brand:'Hoover',cat:'Washing Machine',company:'กลุ่มแคนดี้ ฮูเวอร์ (ผ่านตัวแทนจำหน่ายในไทย)',loc:'นำเข้า',status:'customer',response:'ภายใต้แบรนด์ Haier (ไฮเออร์)    Haier Smart Home',nextStep:'สัญญา 1 ปี     จะเริ่มสัญญา  1 ม.ค. ของทุกปี  รอบบิดดิ้ง  จะประมาณ เดือน 11',nextBidding:'สัญญา 1 ปี     จะเริ่มสัญญา  1 ม.ค. ของทุกปี  รอบบิดดิ้ง  จะประมาณ เดือน 11'},
+{brand:'Gorenje',cat:'Washing Machine',company:'กอเรนเย (ผ่านตัวแทนจำหน่ายในไทย)',loc:'กอเรนเย',status:'blocked',response:'เป็นเครือเดียวกับ Bosch',nextStep:'ติดต่อไม่ได้',nextBidding:'หา contact ใหม่'},
+{brand:'SMEG (Mex)',cat:'Washing Machine',company:'บริษัท เพ็น เค อินเตอร์เทรดดิ้ง จำกัด',loc:'นำเข้าจากอิตาลี',status:'active',response:'ให้เข้าพบช่วงอาทิตย์หน้า',nextStep:'สัญญา 1 ปี เริ่มสัญญาตามการนำเสนอราคา',nextBidding:'ไม่มีสัญญาสามารถนำเสนอราคาได้เลย'},
+{brand:'Teka',cat:'Washing Machine',company:'บริษัท เตก้า (ประเทศไทย) จำกัด',loc:'นำเข้า',status:'lost',response:'ยังไม่ให้ส่งข้อมูลให้ ต้องรอติดต่อทางผู้จัดการ เบอร์ 020587874',nextStep:'ต้องติดตามเรื่อย ๆ',nextBidding:'มีสัญญา แต่สัญญาจะนาน จะทำอีกครั้งเมื่อพบปัญหากับขนส่ง หรือต้องหาขนส่งใหม่'},
+{brand:'Hafele',cat:'Washing Machine',company:'บริษัท เฮเฟเล่ (ประเทศไทย) จำกัด',loc:'สินค้านำเข้า',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตาม และนำเสนอราคาอีกครั้ง',nextBidding:'ไม่มีสัญญาสามารถนำเสนอราคาได้เลย'},
+{brand:'Singer',cat:'Washing Machine',company:'บริษัท ซิงเกอร์ประเทศไทย จำกัด (มหาชน)',loc:'นำเข้า',status:'customer',response:'เสนอราคา บาท/กก.  / เสนอราคาผ่าน    บริษัท โลจิสตี๊ด คอนแทรค โลจิสติคส์ (ประเทศไทย) จำกัด (มหาชน)',nextStep:'เป็นลูกค้า TPL อยู่แล้ว โดยทาง คลัง โลจิติ๊สเป็นคนทำคลังพร้อมขนส่ง',nextBidding:'ไม่มีสัญญาสามารถนำเสนอราคาได้เลย'},
+{brand:'Aconatic (B2B)',cat:'Washing Machine',company:'บริษัท ไฮไฟ โอเรียนท์ ไทย จำกัด (มหาชน)',loc:'วังน้อย อยุธยา',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตามผลก่อนรอบ bid พ.ย.-ธ.ค.',nextBidding:'สัญญา 1 ปี เริ่ม Bidding เดือน ม.ค. (เริ่มbig พ.ย.--ธ.ค.)'},
+{brand:'Aconatic (B2C)',cat:'Washing Machine',company:'บริษัท ไฮไฟ โอเรียนท์ ไทย จำกัด (มหาชน)',loc:'วังน้อย อยุธยา',status:'active',response:'อยู่ระหว่างเสนอราคา',nextStep:'ติดตามผล',nextBidding:'ไม่มี Bidding - เสนอราคาได้เลย'},
+{brand:'AUX',cat:'Washing Machine',company:'เอยูเอ็กซ์ ไทยแลนด์ (ผ่านผู้นำเข้า/ตัวแทนจำหน่าย)',loc:'อมตะซิตี้ ไทย-จีน (ระยอง)',status:'active',response:'ส่ง company profile แล้ว',nextStep:'ติดตามผลหลังส่ง Profile',nextBidding:'สัญญา 1 ปี'},
+];
+
+DATA.forEach(d=>{
+  const c = LOC_COORDS[d.loc];
+  d.lat = c? c[0]:null; d.lng = c? c[1]:null;
+  d.province = PROVINCE_MAP[d.loc] || 'ไม่ทราบที่ตั้ง';
+});
+
+let activeCat = 'ทั้งหมด';
+const ALL_STATUSES = ['customer','dormant','active','blocked','lost'];
+let activeStatuses = new Set(ALL_STATUSES);
+const cats = ['ทั้งหมด','Air Conditioner','Refrigerator','Washing Machine'];
+
+const map = L.map('map', {scrollWheelZoom:false}).setView([13.4,101.1], 8);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  maxZoom: 18, subdomains:'abcd'
+}).addTo(map);
+let markerLayer = L.layerGroup().addTo(map);
+
+function fmt(n){return n.toString();}
+
+document.getElementById('clearFilters').addEventListener('click', ()=>{
+  activeStatuses = new Set(ALL_STATUSES);
+  render();
+});
+
+// ---------- Data management: download template / upload new data ----------
+const STATUS_LABEL_TO_CODE = {};
+Object.keys(STATUS_META).forEach(code=>{ STATUS_LABEL_TO_CODE[STATUS_META[code].label] = code; });
+
+const CAT_ALIASES = {
+  'air conditioner':'Air Conditioner', 'aircon':'Air Conditioner', 'ac':'Air Conditioner', 'แอร์':'Air Conditioner',
+  'refrigerator':'Refrigerator', 'fridge':'Refrigerator', 'ตู้เย็น':'Refrigerator',
+  'washing machine':'Washing Machine', 'washer':'Washing Machine', 'เครื่องซักผ้า':'Washing Machine'
+};
+function normalizeCat(raw){
+  const key = (raw||'').toString().trim().toLowerCase();
+  return CAT_ALIASES[key] || (['Air Conditioner','Refrigerator','Washing Machine'].includes(raw) ? raw : null);
+}
+
+const TEMPLATE_HEADERS = ['ประเภท (Air Conditioner/Refrigerator/Washing Machine)','แบรนด์','บริษัท','ที่ตั้งโรงงาน','สถานะ','สถานะปัจจุบัน / Response ลูกค้า','Next Step','Next Bidding'];
+
+function setDmStatus(msg, cls){
+  const el = document.getElementById('dmStatus');
+  el.textContent = msg;
+  el.className = 'dm-status' + (cls ? ' '+cls : '');
+}
+
+document.getElementById('downloadTemplate').addEventListener('click', ()=>{
+  const rows = DATA.map(d=>({
+    [TEMPLATE_HEADERS[0]]: d.cat,
+    [TEMPLATE_HEADERS[1]]: d.brand,
+    [TEMPLATE_HEADERS[2]]: d.company,
+    [TEMPLATE_HEADERS[3]]: d.loc,
+    [TEMPLATE_HEADERS[4]]: STATUS_META[d.status].label,
+    [TEMPLATE_HEADERS[5]]: d.response,
+    [TEMPLATE_HEADERS[6]]: d.nextStep,
+    [TEMPLATE_HEADERS[7]]: d.nextBidding
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows, {header: TEMPLATE_HEADERS});
+  ws['!cols'] = [{wch:22},{wch:20},{wch:35},{wch:30},{wch:22},{wch:45},{wch:45},{wch:30}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ข้อมูล');
+  XLSX.writeFile(wb, 'dashboard_ข้อมูลเทมเพลต.xlsx');
+  setDmStatus('ดาวน์โหลดเทมเพลตแล้ว — แก้ไขในไฟล์ Excel นี้แล้วอัปโหลดกลับเข้ามาได้เลย', 'ok');
+});
+
+document.getElementById('uploadTrigger').addEventListener('click', ()=>{
+  document.getElementById('uploadFile').click();
+});
+
+document.getElementById('uploadFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  setDmStatus('กำลังอ่านไฟล์...', 'warn');
+  const reader = new FileReader();
+  reader.onload = (evt)=>{
+    try{
+      const wb = XLSX.read(evt.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      if(rows.length===0){ setDmStatus('ไฟล์นี้ไม่มีข้อมูล (แถวว่าง)', 'err'); return; }
+
+      const newData = [];
+      const warnings = [];
+      rows.forEach((r, i)=>{
+        const rowNum = i+2; // account for header row in Excel
+        const catRaw = (r[TEMPLATE_HEADERS[0]] || r['ประเภท'] || r['Category'] || '').toString().trim();
+        const brand = (r[TEMPLATE_HEADERS[1]] || r['แบรนด์'] || '').toString().trim();
+        const company = (r[TEMPLATE_HEADERS[2]] || r['บริษัท'] || '').toString().trim();
+        const loc = (r[TEMPLATE_HEADERS[3]] || r['ที่ตั้งโรงงาน'] || '').toString().trim();
+        const statusRaw = (r[TEMPLATE_HEADERS[4]] || r['สถานะ'] || '').toString().trim();
+        const response = (r[TEMPLATE_HEADERS[5]] || r['Response'] || '').toString().trim();
+        const nextStep = (r[TEMPLATE_HEADERS[6]] || r['Next Step'] || '').toString().trim();
+        const nextBidding = (r[TEMPLATE_HEADERS[7]] || r['Next Bidding'] || '').toString().trim();
+
+        if(!brand){ warnings.push(`แถว ${rowNum}: ไม่มีชื่อแบรนด์ - ข้ามแถวนี้`); return; }
+
+        let cat = normalizeCat(catRaw);
+        if(!cat){
+          cat = 'Air Conditioner';
+          warnings.push(`แถว ${rowNum} (${brand}): ประเภท "${catRaw}" ไม่ตรงกับที่ระบบรู้จัก (Air Conditioner/Refrigerator/Washing Machine) ตั้งเป็น "Air Conditioner" ชั่วคราว`);
+        }
+
+        let status = STATUS_LABEL_TO_CODE[statusRaw] || (ALL_STATUSES.includes(statusRaw) ? statusRaw : null);
+        if(!status){
+          status = 'blocked';
+          warnings.push(`แถว ${rowNum} (${brand}): สถานะ "${statusRaw}" ไม่ตรงกับที่ระบบรู้จัก ตั้งเป็น "ติดต่อผู้มีอำนาจไม่ได้" ชั่วคราว`);
+        }
+        const coords = LOC_COORDS[loc];
+        if(!coords){ warnings.push(`แถว ${rowNum} (${brand}): ไม่พบพิกัดของที่ตั้ง "${loc}" — จะไม่แสดงบนแผนที่ (แสดงในตารางปกติ)`); }
+
+        newData.push({
+          brand, cat, company, loc, status,
+          response: response || '-', nextStep: nextStep || '-', nextBidding: nextBidding || '-',
+          lat: coords ? coords[0] : null, lng: coords ? coords[1] : null
+        });
+      });
+
+      if(newData.length===0){ setDmStatus('ไม่พบแถวข้อมูลที่ใช้งานได้ในไฟล์นี้', 'err'); return; }
+
+      DATA.length = 0;
+      DATA.push(...newData);
+      activeCat = 'ทั้งหมด';
+      activeStatuses = new Set(ALL_STATUSES);
+      render();
+
+      let msg = `อัปเดตสำเร็จ: นำเข้า ${newData.length} รายชื่อ`;
+      if(warnings.length) msg += ` (มีข้อสังเกต ${warnings.length} รายการ ดู console เพื่อดูรายละเอียด)`;
+      setDmStatus(msg, warnings.length ? 'warn' : 'ok');
+      if(warnings.length) console.warn(warnings.join('\n'));
+    }catch(err){
+      setDmStatus('เกิดข้อผิดพลาดขณะอ่านไฟล์ — ตรวจสอบว่าเป็นไฟล์ .xlsx ที่ถูกต้อง: '+err.message, 'err');
+    }
+    e.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function render(){
+  const filtCat = DATA.filter(d => activeCat==='ทั้งหมด' || d.cat===activeCat);
+
+  const counts = {customer:0,dormant:0,active:0,blocked:0,lost:0};
+  filtCat.forEach(d=>counts[d.status]++);
+  const total = filtCat.length;
+
+  const filt = filtCat.filter(d => activeStatuses.has(d.status));
+
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="kpi k-total"><div class="n">${fmt(total)}</div><div class="l">รายชื่อทั้งหมด</div></div>
+    <div class="kpi k-customer"><div class="n">${fmt(counts.customer+counts.dormant)}</div><div class="l">เป็นลูกค้า / เคยเป็นลูกค้า</div></div>
+    <div class="kpi k-active"><div class="n">${fmt(counts.active)}</div><div class="l">กำลังเสนอราคา/ติดตาม</div></div>
+    <div class="kpi k-blocked"><div class="n">${fmt(counts.blocked)}</div><div class="l">ติดต่อผู้มีอำนาจไม่ได้</div></div>
+    <div class="kpi k-lost"><div class="n">${fmt(counts.lost)}</div><div class="l">แข่งขันไม่ได้/ปิดโอกาส</div></div>
+  `;
+
+  document.getElementById('tabs').innerHTML = cats.map(c=>{
+    const n = c==='ทั้งหมด' ? DATA.length : DATA.filter(d=>d.cat===c).length;
+    return `<button class="tab ${c===activeCat?'active':''}" data-cat="${c}">${c} <span class="cnt">${n}</span></button>`;
+  }).join('');
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+    activeCat=b.dataset.cat;
+    render();
+  });
+
+  document.getElementById('statusFilters').innerHTML = ALL_STATUSES.map(s=>{
+    const isActive = activeStatuses.has(s);
+    return `<button class="${isActive?'active':''}" data-s="${s}">${STATUS_META[s].label}</button>`;
+  }).join('') + `<button class="clear-btn" id="statusAllNone">${activeStatuses.size===ALL_STATUSES.length? 'ไม่เลือกทั้งหมด':'เลือกทั้งหมด'}</button>`;
+  document.querySelectorAll('#statusFilters button[data-s]').forEach(b=>b.onclick=()=>{
+    const s = b.dataset.s;
+    if(activeStatuses.has(s)) activeStatuses.delete(s); else activeStatuses.add(s);
+    render();
+  });
+  const allNoneBtn = document.getElementById('statusAllNone');
+  if(allNoneBtn) allNoneBtn.onclick = ()=>{
+    activeStatuses = activeStatuses.size===ALL_STATUSES.length ? new Set() : new Set(ALL_STATUSES);
+    render();
+  };
+
+  document.getElementById('resultCount').textContent = `แสดง ${filt.length} จาก ${DATA.length} รายชื่อทั้งหมด`;
+
+  document.getElementById('tbody').innerHTML = filt.map((d,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td style="font-weight:500">${d.brand} <span style="color:var(--text3);font-size:11px">(${d.cat})</span></td>
+      <td>${d.loc}</td>
+      <td style="color:var(--text2)">${d.company}</td>
+      <td><span class="badge ${STATUS_META[d.status].cls}">${STATUS_META[d.status].label}</span></td>
+      <td style="color:var(--text2)">${d.response}</td>
+      <td style="color:var(--text2)">${d.nextStep}</td>
+      <td style="color:var(--text2)">${d.nextBidding}</td>
+    </tr>
+  `).join('');
+
+  const funnelOrder = ['customer','dormant','active','blocked','lost'];
+  const maxC = Math.max(...funnelOrder.map(s=>counts[s]),1);
+  document.getElementById('funnel').innerHTML = funnelOrder.map(s=>{
+    const w = Math.max((counts[s]/maxC)*100,6);
+    return `<div class="funnel-row">
+      <div class="funnel-label">${STATUS_META[s].label}</div>
+      <div class="funnel-bar" style="width:${w}%; background:${STATUS_META[s].color}">${counts[s]}</div>
+    </div>`;
+  }).join('');
+
+  const unknown = filtCat.filter(d=>d.lat===null);
+  document.getElementById('unknownList').innerHTML = unknown.length ? unknown.map(d=>`
+    <div class="u-item"><span><b>${d.brand}</b> · ${d.cat}</span><span>${d.loc}</span></div>
+  `).join('') : '<div style="font-size:12px;color:var(--text3)">ไม่มี</div>';
+
+  markerLayer.clearLayers();
+  const pts = filt.filter(d=>d.lat!==null);
+  const grouped = {};
+  pts.forEach(d=>{
+    const key = d.lat.toFixed(4)+'_'+d.lng.toFixed(4);
+    if(!grouped[key]) grouped[key] = [];
+    grouped[key].push(d);
+  });
+  Object.values(grouped).forEach(group=>{
+    const d0 = group[0];
+    const color = group.length===1 ? STATUS_META[d0.status].color : '#FFC94D';
+    const marker = L.circleMarker([d0.lat, d0.lng], {
+      radius: 8 + Math.min(group.length,5)*1.5,
+      color: color, weight:2, fillColor:color, fillOpacity:0.55
+    }).addTo(markerLayer);
+    const labelText = group.length===1
+      ? d0.brand
+      : (group.length<=3 ? group.map(g=>g.brand).join(', ') : group.slice(0,2).map(g=>g.brand).join(', ')+` +${group.length-2}`);
+    marker.bindTooltip(labelText, {permanent:true, direction:'right', offset:[10,0], className:'map-label'});
+    const popupHtml = group.map(d=>`
+      <div style="margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #22314A;">
+        <b>${d.brand}</b> <span style="color:${STATUS_META[d.status].color}">● ${STATUS_META[d.status].label}</span><br/>
+        <span style="color:#8C97B0">${d.company}</span><br/>
+        <span style="color:#8C97B0">${d.loc}</span><br/>
+        <span style="color:#8C97B0"><b style="color:#E9EDF5">Response:</b> ${d.response}</span><br/>
+        <span style="color:#8C97B0"><b style="color:#E9EDF5">Next Step:</b> ${d.nextStep}</span><br/>
+        <span style="color:#8C97B0"><b style="color:#E9EDF5">Next Bidding:</b> ${d.nextBidding}</span>
+      </div>`).join('');
+    marker.bindPopup(`<div style="max-height:220px; overflow-y:auto;">${popupHtml}</div>`);
+  });
+}
+render();
+</script>
+</body>
+</html>
