@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth/rbac";
 import { writeAuditLog } from "@/lib/audit";
+import { getSystemUserId } from "@/lib/system-user";
 import { recalculateTransaction } from "@/lib/actions/calculation";
 import { recalculateSettlementsForMonth } from "@/lib/actions/closing";
-import type { ActionResult } from "@/lib/actions/entitlements";
+import type { ActionResult } from "@/lib/actions/types";
 
 const verifyMarginSchema = z.object({
   salesTransactionId: z.string().min(1),
@@ -16,15 +16,14 @@ const verifyMarginSchema = z.object({
 });
 
 /**
- * US-015/US-016: Accounting verifies the GOV Margin for a transaction.
- * The system never computes Margin itself — it only records what
- * Accounting confirms here, then re-runs the commission calculation.
+ * The system never computes GOV Margin itself — it only records what
+ * gets confirmed here, then re-runs the commission calculation.
  */
 export async function verifyMargin(
   _prevState: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await requireRole("ACCOUNTING", "ADMIN");
+  const userId = await getSystemUserId();
 
   const parsed = verifyMarginSchema.safeParse({
     salesTransactionId: formData.get("salesTransactionId"),
@@ -48,21 +47,21 @@ export async function verifyMargin(
       salesTransactionId,
       margin: marginPercent,
       verified: true,
-      reviewedById: session.userId,
+      reviewedById: userId,
       reviewedAt: new Date(),
       notes,
     },
     update: {
       margin: marginPercent,
       verified: true,
-      reviewedById: session.userId,
+      reviewedById: userId,
       reviewedAt: new Date(),
       notes,
     },
   });
 
   await writeAuditLog({
-    userId: session.userId,
+    userId,
     action: existing ? "UPDATE" : "CREATE",
     entity: "MarginReview",
     entityId: review.id,
@@ -71,7 +70,7 @@ export async function verifyMargin(
     reason: "GOV Margin verified",
   });
 
-  await recalculateTransaction(salesTransactionId, session.userId);
+  await recalculateTransaction(salesTransactionId, userId);
 
   const transaction = await prisma.salesTransaction.findUnique({
     where: { id: salesTransactionId },
@@ -81,7 +80,6 @@ export async function verifyMargin(
     await recalculateSettlementsForMonth(transaction.commissionMonth);
   }
 
-  revalidatePath("/accounting/margin-review");
-  revalidatePath("/accounting/review");
+  revalidatePath("/");
   return { ok: true };
 }

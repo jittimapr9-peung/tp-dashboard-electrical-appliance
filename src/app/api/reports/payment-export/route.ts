@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth/rbac";
 import { formatMonth } from "@/lib/utils";
 
 function csvEscape(value: string): string {
@@ -11,13 +10,10 @@ function csvEscape(value: string): string {
 }
 
 /**
- * US-025: Payment Export. Format is a Config/Placeholder (Generic CSV) —
- * PRD.md section 12 item 11 — until the real Accounting file format is
- * confirmed.
+ * Payment Export. Format is a Config/Placeholder (Generic CSV) — PRD.md
+ * section 12 item 11 — until the real Accounting file format is confirmed.
  */
 export async function GET(request: Request) {
-  await requireRole("ACCOUNTING", "ADMIN");
-
   const { searchParams } = new URL(request.url);
   const monthParam = searchParams.get("month");
   if (!monthParam) {
@@ -26,7 +22,7 @@ export async function GET(request: Request) {
   const commissionMonth = new Date(monthParam);
 
   const settlements = await prisma.monthlyCommissionSettlement.findMany({
-    where: { commissionMonth, status: { in: ["FINALIZED", "PAID"] } },
+    where: { commissionMonth },
     include: { salesPerson: true },
   });
 

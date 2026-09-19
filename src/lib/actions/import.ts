@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth/rbac";
 import { writeAuditLog } from "@/lib/audit";
+import { getSystemUserId } from "@/lib/system-user";
 import { buildImportRows, toCommissionMonth } from "@/lib/import/build-rows";
 import type { BuiltImportRow, ColumnMapping, RawImportRow } from "@/lib/import/types";
 import { recalculateBatch } from "@/lib/actions/calculation";
@@ -52,8 +52,6 @@ export async function validateImportRows(
   _prevState: ValidationSummary,
   formData: FormData,
 ): Promise<ValidationSummary> {
-  await requireRole("ACCOUNTING", "ADMIN");
-
   const payload = parsePayload(formData);
   if (!payload) return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
 
@@ -88,7 +86,7 @@ export async function confirmImport(
   _prevState: ConfirmImportResult,
   formData: FormData,
 ): Promise<ConfirmImportResult> {
-  const session = await requireRole("ACCOUNTING", "ADMIN");
+  const userId = await getSystemUserId();
 
   const payload = parsePayload(formData);
   if (!payload) return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
@@ -113,7 +111,7 @@ export async function confirmImport(
         rowCount: built.length,
         validRowCount: built.filter((r) => r.status === "VALID").length,
         errorRowCount: built.filter((r) => r.status !== "VALID").length,
-        uploadedById: session.userId,
+        uploadedById: userId,
         confirmedAt: new Date(),
       },
     });
@@ -148,7 +146,7 @@ export async function confirmImport(
   });
 
   await writeAuditLog({
-    userId: session.userId,
+    userId,
     action: "CONFIRM_IMPORT",
     entity: "ImportBatch",
     entityId: importBatch.id,
@@ -156,12 +154,10 @@ export async function confirmImport(
     reason: "Sales Report imported",
   });
 
-  await recalculateBatch(importBatch.id, session.userId);
+  await recalculateBatch(importBatch.id, userId);
   await recalculateSettlementsForMonth(commissionMonth);
 
-  revalidatePath("/accounting");
-  revalidatePath("/accounting/review");
-  revalidatePath("/accounting/import");
+  revalidatePath("/");
 
   return { ok: true, importBatchId: importBatch.id };
 }

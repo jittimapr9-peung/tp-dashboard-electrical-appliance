@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { verifyMargin } from "@/lib/actions/margin-review";
-import type { ActionResult } from "@/lib/actions/entitlements";
+import type { ActionResult } from "@/lib/actions/types";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
