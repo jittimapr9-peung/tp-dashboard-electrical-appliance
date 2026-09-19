@@ -1,0 +1,386 @@
+// TP Logistics Sales Commission System — Database Schema
+// See PRD.md section 11 for the data model overview.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  ACCOUNTING
+  SALES
+  MANAGEMENT
+}
+
+enum CustomerType {
+  B2C
+  B2B_PRIVATE
+  SME
+  B2B_GOV
+}
+
+enum ImportBatchStatus {
+  UPLOADED
+  MAPPED
+  PREVIEWED
+  VALIDATED
+  CONFIRMED
+  CALCULATED
+  ERROR
+}
+
+enum TransactionStatus {
+  VALID
+  INVALID
+  DUPLICATE
+}
+
+enum EntitlementType {
+  NORMAL
+  NEW_CUSTOMER
+  LEGACY_TRANSITION
+}
+
+enum EntitlementStatus {
+  ACTIVE
+  EXPIRED
+  REVIEW_REQUIRED
+  PENDING_APPROVAL
+}
+
+enum EntitlementAlert {
+  EXPIRING_THIS_MONTH
+  EXPIRED
+  EXPIRED_WITH_SALES
+  MISSING_ENTITLEMENT
+}
+
+enum ReviewStatus {
+  OK
+  REVIEW_REQUIRED
+}
+
+enum CapStatus {
+  NOT_APPLIED
+  CAP_APPLIED
+}
+
+enum AdjustmentReasonCode {
+  DATA_CORRECTION
+  MARGIN_CORRECTION
+  CUSTOMER_CLASSIFICATION
+  DUPLICATE_REMOVAL
+  MANAGEMENT_ADJUSTMENT
+  OTHER
+}
+
+enum SettlementStatus {
+  DRAFT
+  CALCULATED
+  ACCOUNTING_REVIEW
+  FINALIZED
+  PAID
+}
+
+enum PolicyRuleType {
+  STANDARD_RATE
+  GOV_MARGIN_TIER
+  COMMISSION_CAP
+  CONFIG_PLACEHOLDER
+}
+
+// ---------------------------------------------------------------------------
+// Users & Sales People
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  role          Role
+  isActive      Boolean  @default(true)
+  salesPersonId String?  @unique
+  salesPerson   SalesPerson? @relation(fields: [salesPersonId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  auditLogs           AuditLog[]
+  uploadedBatches     ImportBatch[]        @relation("UploadedBy")
+  reviewedMargins     MarginReview[]       @relation("ReviewedBy")
+  createdEntitlements CustomerEntitlement[] @relation("EntitlementCreatedBy")
+  adjustments         CommissionAdjustment[] @relation("AdjustedBy")
+  finalizedSettlements MonthlyCommissionSettlement[] @relation("FinalizedBy")
+  reopenedSettlements  MonthlyCommissionSettlement[] @relation("ReopenedBy")
+
+  @@map("users")
+}
+
+model SalesPerson {
+  id        String   @id @default(cuid())
+  code      String?  @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                User?
+  transactions        SalesTransaction[]
+  entitlements        CustomerEntitlement[]
+  settlements         MonthlyCommissionSettlement[]
+
+  @@map("sales_people")
+}
+
+// ---------------------------------------------------------------------------
+// Import
+// ---------------------------------------------------------------------------
+
+model ImportBatch {
+  id             String            @id @default(cuid())
+  commissionMonth DateTime         // stored as first-of-month
+  filename       String
+  fileHash       String
+  sheetName      String
+  columnMapping  Json
+  status         ImportBatchStatus @default(UPLOADED)
+  rowCount       Int               @default(0)
+  validRowCount  Int               @default(0)
+  errorRowCount  Int               @default(0)
+  uploadedById   String
+  uploadedBy     User              @relation("UploadedBy", fields: [uploadedById], references: [id])
+  uploadedAt     DateTime          @default(now())
+  confirmedAt    DateTime?
+
+  transactions SalesTransaction[]
+
+  @@unique([commissionMonth, filename, fileHash])
+  @@map("import_batches")
+}
+
+model SalesTransaction {
+  id               String             @id @default(cuid())
+  importBatchId    String
+  importBatch      ImportBatch        @relation(fields: [importBatchId], references: [id])
+  rowNumber        Int
+  transactionDate  DateTime
+  commissionMonth  DateTime
+  salesPersonNameRaw String
+  salesPersonId    String?
+  salesPerson      SalesPerson?       @relation(fields: [salesPersonId], references: [id])
+  customerCode     String
+  customerName     String
+  customerTypeRaw  String
+  customerType     CustomerType?
+  revenue          Decimal            @db.Decimal(18, 2)
+  status           TransactionStatus  @default(VALID)
+  validationErrors Json?
+  isDuplicateOf    String?
+  createdAt        DateTime           @default(now())
+
+  calculation CommissionCalculation?
+  marginReview MarginReview?
+
+  @@index([commissionMonth])
+  @@index([customerCode])
+  @@index([salesPersonId])
+  @@map("sales_transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Commission Policy (versioned)
+// ---------------------------------------------------------------------------
+
+model CommissionPolicyVersion {
+  id             String   @id @default(cuid())
+  versionCode    String   @unique // e.g. COMMISSION-2026-V1
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  isActive       Boolean  @default(true)
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  rules        CommissionPolicyRule[]
+  calculations CommissionCalculation[]
+
+  @@map("commission_policy_versions")
+}
+
+// Encodes standard rate per customer type, GOV margin tiers, the monthly
+// cap, and any unresolved Production Decision as a CONFIG_PLACEHOLDER row
+// (see PRD.md section 12). Placeholder rows must never be guessed by code.
+model CommissionPolicyRule {
+  id                  String          @id @default(cuid())
+  policyVersionId     String
+  policyVersion       CommissionPolicyVersion @relation(fields: [policyVersionId], references: [id])
+  ruleType            PolicyRuleType
+  customerType        CustomerType?
+  marginMin           Decimal?        @db.Decimal(6, 4) // inclusive, e.g. 0.10
+  marginMax           Decimal?        @db.Decimal(6, 4) // exclusive upper bound unless noted
+  rate                Decimal?        @db.Decimal(6, 4) // e.g. 0.0050 = 0.50%
+  capAmount           Decimal?        @db.Decimal(18, 2)
+  configKey           String?
+  configValue         String?
+  requiresConfirmation Boolean        @default(false)
+  description         String?
+
+  @@map("commission_policy_rules")
+}
+
+// ---------------------------------------------------------------------------
+// Customer Commission Entitlement Registry
+// ---------------------------------------------------------------------------
+
+model CustomerEntitlement {
+  id              String            @id @default(cuid())
+  salesPersonId   String
+  salesPerson     SalesPerson       @relation(fields: [salesPersonId], references: [id])
+  customerCode    String
+  customerName    String
+  entitlementType EntitlementType
+  startMonth      DateTime
+  endMonth        DateTime
+  legacyRuleId    String?
+  legacyRate      Decimal?          @db.Decimal(6, 4)
+  sourceReference String?
+  notes           String?
+  status          EntitlementStatus @default(ACTIVE)
+  createdById     String
+  createdBy       User              @relation("EntitlementCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  calculations CommissionCalculation[]
+
+  @@index([customerCode])
+  @@index([salesPersonId])
+  @@map("customer_entitlements")
+}
+
+// ---------------------------------------------------------------------------
+// GOV Margin Review
+// ---------------------------------------------------------------------------
+
+model MarginReview {
+  id                 String           @id @default(cuid())
+  salesTransactionId String           @unique
+  salesTransaction   SalesTransaction @relation(fields: [salesTransactionId], references: [id])
+  margin             Decimal?         @db.Decimal(6, 4)
+  verified           Boolean          @default(false)
+  reviewedById       String?
+  reviewedBy         User?            @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt         DateTime?
+  notes              String?
+  createdAt          DateTime         @default(now())
+
+  @@map("margin_reviews")
+}
+
+// ---------------------------------------------------------------------------
+// Commission Calculation
+// ---------------------------------------------------------------------------
+
+model CommissionCalculation {
+  id                              String       @id @default(cuid())
+  salesTransactionId              String       @unique
+  salesTransaction                SalesTransaction @relation(fields: [salesTransactionId], references: [id])
+  policyVersionId                 String
+  policyVersion                   CommissionPolicyVersion @relation(fields: [policyVersionId], references: [id])
+  customerEntitlementId           String?
+  customerEntitlement             CustomerEntitlement? @relation(fields: [customerEntitlementId], references: [id])
+  rateApplied                     Decimal?     @db.Decimal(6, 4)
+  commissionBeforeCap             Decimal?     @db.Decimal(18, 2)
+  capAmount                       Decimal?     @db.Decimal(18, 2)
+  cappedAmount                    Decimal?     @db.Decimal(18, 2)
+  finalCommissionBeforeAdjustment Decimal?     @db.Decimal(18, 2)
+  capStatus                       CapStatus    @default(NOT_APPLIED)
+  reviewStatus                    ReviewStatus @default(OK)
+  reviewReason                    String?
+  entitlementAlert                EntitlementAlert?
+  calculatedAt                    DateTime     @default(now())
+
+  adjustments CommissionAdjustment[]
+
+  @@map("commission_calculations")
+}
+
+// ---------------------------------------------------------------------------
+// Accounting Adjustment
+// ---------------------------------------------------------------------------
+
+model CommissionAdjustment {
+  id                       String                @id @default(cuid())
+  commissionCalculationId  String
+  commissionCalculation    CommissionCalculation @relation(fields: [commissionCalculationId], references: [id])
+  amount                   Decimal               @db.Decimal(18, 2)
+  reasonCode               AdjustmentReasonCode
+  reasonText               String
+  adjustedById             String
+  adjustedBy               User                  @relation("AdjustedBy", fields: [adjustedById], references: [id])
+  timestamp                DateTime              @default(now())
+
+  @@map("commission_adjustments")
+}
+
+// ---------------------------------------------------------------------------
+// Monthly Closing
+// ---------------------------------------------------------------------------
+
+model MonthlyCommissionSettlement {
+  id                        String           @id @default(cuid())
+  commissionMonth           DateTime
+  salesPersonId             String
+  salesPerson               SalesPerson      @relation(fields: [salesPersonId], references: [id])
+  status                    SettlementStatus @default(DRAFT)
+  totalRevenue              Decimal          @default(0) @db.Decimal(18, 2)
+  totalCommissionBeforeCap  Decimal          @default(0) @db.Decimal(18, 2)
+  totalAdjustment           Decimal          @default(0) @db.Decimal(18, 2)
+  totalFinalCommission      Decimal          @default(0) @db.Decimal(18, 2)
+  // Commission Cap (PRD.md section 4.3) is 20,000 THB per Sales person per
+  // month, so it is evaluated here — on the (Sales, Month) aggregate —
+  // never on an individual CommissionCalculation row.
+  capAmount                 Decimal?         @db.Decimal(18, 2)
+  cappedAmount              Decimal          @default(0) @db.Decimal(18, 2)
+  capStatus                 CapStatus        @default(NOT_APPLIED)
+  finalizedById             String?
+  finalizedBy               User?            @relation("FinalizedBy", fields: [finalizedById], references: [id])
+  finalizedAt               DateTime?
+  reopenedById              String?
+  reopenedBy                User?            @relation("ReopenedBy", fields: [reopenedById], references: [id])
+  reopenedAt                DateTime?
+  reopenReason              String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+
+  @@unique([commissionMonth, salesPersonId])
+  @@map("monthly_commission_settlements")
+}
+
+// ---------------------------------------------------------------------------
+// Audit Log
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  oldValue  Json?
+  newValue  Json?
+  reason    String?
+  timestamp DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
