@@ -306,8 +306,13 @@ Admin Configuration UI พร้อม Flag `requiresConfirmation = true` แล
 | Validation | Zod |
 | Import | SheetJS (xlsx) |
 | Charts | Recharts |
-| Auth/RBAC | NextAuth (Credentials) + Server-side Role Guard |
+| Auth/RBAC | Credentials login (bcrypt) + signed JWT session cookie (`jose`) + Server-side Role Guard |
 | Testing | Vitest |
+
+> หมายเหตุ implementation: ใช้ session แบบ JWT ที่เซ็นเองแทน NextAuth
+> เนื่องจากช่วงที่พัฒนา NextAuth v4/v5 ยังไม่รองรับ Next.js 16 + React 19
+> อย่างเสถียรเพียงพอ กลไก RBAC (ตรวจ role จาก session ที่ฝั่ง Server ทุก
+> Request) ยังเป็นไปตามข้อกำหนดเดิมทุกประการ
 
 ---
 
