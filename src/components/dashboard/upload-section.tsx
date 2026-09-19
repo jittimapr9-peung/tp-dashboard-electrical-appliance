@@ -11,13 +11,68 @@ import { confirmImport, validateImportRows } from "@/lib/actions/import";
 import type { BuiltImportRow, ColumnMapping, RawImportRow } from "@/lib/import/types";
 
 const SYSTEM_FIELDS: { key: keyof ColumnMapping; label: string; aliases: string[] }[] = [
-  { key: "date", label: "วันที่", aliases: ["วันที่", "date"] },
-  { key: "salesName", label: "Sales", aliases: ["sales", "พนักงานขาย"] },
-  { key: "customerCode", label: "Customer Code", aliases: ["customer code", "รหัสลูกค้า"] },
-  { key: "customerName", label: "Customer Name", aliases: ["customer name", "ชื่อลูกค้า"] },
-  { key: "customerType", label: "ประเภทลูกค้า", aliases: ["ประเภทลูกค้า", "customer type"] },
-  { key: "revenue", label: "รายได้/ยอดขาย", aliases: ["รายได้/ยอดขาย", "รายได้", "ยอดขาย", "revenue"] },
+  {
+    key: "date",
+    label: "วันที่",
+    aliases: ["วันที่", "วันที่ขาย", "วันที่บันทึก", "วันทีขาย", "date", "salesdate", "transactiondate"],
+  },
+  {
+    key: "salesName",
+    label: "Sales",
+    aliases: [
+      "sales",
+      "salesname",
+      "salesperson",
+      "พนักงานขาย",
+      "ชื่อพนักงานขาย",
+      "เซล",
+      "เซลล์",
+      "ชื่อเซล",
+      "ชื่อเซลล์",
+      "ผู้ขาย",
+      "พนักงาน",
+    ],
+  },
+  {
+    key: "customerCode",
+    label: "Customer Code",
+    aliases: ["customercode", "customerid", "รหัสลูกค้า", "รหัสลูกคา", "รหัสลค", "customercode."],
+  },
+  {
+    key: "customerName",
+    label: "Customer Name",
+    aliases: ["customername", "customer", "ชื่อลูกค้า", "ชื่อลูกคา", "ลูกค้า"],
+  },
+  {
+    key: "customerType",
+    label: "ประเภทลูกค้า",
+    aliases: ["customertype", "type", "ประเภทลูกค้า", "ประเภทลูกคา", "ประเภท"],
+  },
+  {
+    key: "revenue",
+    label: "รายได้/ยอดขาย",
+    aliases: [
+      "revenue",
+      "รายได้ยอดขาย",
+      "รายได้",
+      "ยอดขาย",
+      "ยอดขายสุทธิ",
+      "มูลค่า",
+      "มูลค่าขาย",
+      "จำนวนเงิน",
+      "amount",
+      "sales(amount)",
+    ],
+  },
 ];
+
+/** Strips spaces and punctuation, lowercases — so header/alias spelling and spacing differences don't matter. */
+function normalize(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[\s._/\-()]/g, "");
+}
 
 const ERROR_LABEL: Record<string, string> = {
   MISSING_DATE: "ไม่มีวันที่",
@@ -31,14 +86,48 @@ const ERROR_LABEL: Record<string, string> = {
   DUPLICATE_ROW: "ข้อมูลซ้ำในไฟล์",
 };
 
-function autoDetectMapping(headers: string[]): ColumnMapping | null {
-  const mapping = {} as ColumnMapping;
+/**
+ * Best-effort column guess: exact normalized match first, then substring
+ * match, so header spelling/spacing quirks in a real-world Sales Report
+ * don't force the person to map every column by hand. Returns a partial
+ * mapping — missing fields are left out for the person to pick manually.
+ */
+function guessMapping(headers: string[]): Partial<ColumnMapping> {
+  const normalizedHeaders = headers.map((h) => ({ header: h, normalized: normalize(h) }));
+  const used = new Set<string>();
+  const mapping: Partial<ColumnMapping> = {};
+
   for (const field of SYSTEM_FIELDS) {
-    const match = headers.find((h) => field.aliases.includes(h.trim().toLowerCase()));
-    if (!match) return null;
-    mapping[field.key] = match;
+    const exact = normalizedHeaders.find(
+      (h) => !used.has(h.header) && field.aliases.some((a) => normalize(a) === h.normalized),
+    );
+    if (exact) {
+      mapping[field.key] = exact.header;
+      used.add(exact.header);
+    }
   }
+
+  for (const field of SYSTEM_FIELDS) {
+    if (mapping[field.key]) continue;
+    const partial = normalizedHeaders.find(
+      (h) =>
+        !used.has(h.header) &&
+        field.aliases.some((a) => {
+          const na = normalize(a);
+          return na.length > 1 && (h.normalized.includes(na) || na.includes(h.normalized));
+        }),
+    );
+    if (partial) {
+      mapping[field.key] = partial.header;
+      used.add(partial.header);
+    }
+  }
+
   return mapping;
+}
+
+function isMappingComplete(mapping: Partial<ColumnMapping>): mapping is ColumnMapping {
+  return SYSTEM_FIELDS.every((f) => Boolean(mapping[f.key]));
 }
 
 async function fileToHash(file: File): Promise<string> {
@@ -59,7 +148,7 @@ export function UploadSection() {
   const [sheetName, setSheetName] = useState("");
   const [rows, setRows] = useState<RawImportRow[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  const [mapping, setMapping] = useState<Partial<ColumnMapping>>({});
   const [needsManualMapping, setNeedsManualMapping] = useState(false);
   const [validationResults, setValidationResults] = useState<BuiltImportRow[] | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -99,11 +188,12 @@ export function UploadSection() {
     // variables are still their stale (pre-upload) values in this closure.
     const meta = { filename: selected.name, fileHash: hash, sheetName: firstSheet };
 
-    const autoMapping = autoDetectMapping(detectedHeaders);
-    if (autoMapping) {
-      setMapping(autoMapping);
+    const guessedMapping = guessMapping(detectedHeaders);
+    setMapping(guessedMapping);
+
+    if (isMappingComplete(guessedMapping)) {
       setNeedsManualMapping(false);
-      await runValidation(autoMapping, jsonRows, meta);
+      await runValidation(guessedMapping, jsonRows, meta);
     } else {
       setNeedsManualMapping(true);
       setStep("mapping");
@@ -139,12 +229,12 @@ export function UploadSection() {
   }
 
   async function handleConfirmMapping() {
-    if (!mapping) return;
+    if (!isMappingComplete(mapping)) return;
     await runValidation(mapping, rows, { filename: file?.name ?? "", fileHash, sheetName });
   }
 
   async function runConfirm() {
-    if (!mapping) return;
+    if (!isMappingComplete(mapping)) return;
     setIsBusy(true);
     setMessage(null);
     try {
@@ -173,6 +263,7 @@ export function UploadSection() {
     setStep("upload");
     setFile(null);
     setRows([]);
+    setMapping({});
     setValidationResults(null);
     setMessage(null);
     setNeedsManualMapping(false);
@@ -215,16 +306,39 @@ export function UploadSection() {
         {step === "mapping" && needsManualMapping && (
           <div className="space-y-3">
             <p className="text-sm text-amber-700">
-              ไม่พบชื่อคอลัมน์ที่คุ้นเคยในไฟล์นี้ — กรุณาเลือกคอลัมน์ให้ตรงกับข้อมูลที่ต้องการด้วยตนเอง
+              ระบบเดาบางคอลัมน์ให้แล้ว แต่ยังมีบางช่องที่เดาไม่ได้ — กรุณาช่วยเลือกให้ครบ (ดูตัวอย่างข้อมูลด้านล่างประกอบได้)
             </p>
+
+            <div>
+              <p className="mb-1 text-xs font-medium text-slate-500">ตัวอย่างข้อมูลในไฟล์ (2 แถวแรก)</p>
+              <Table>
+                <THead>
+                  <TR>
+                    {headers.map((h) => (
+                      <TH key={h}>{h}</TH>
+                    ))}
+                  </TR>
+                </THead>
+                <TBody>
+                  {rows.slice(0, 2).map((row, i) => (
+                    <TR key={i}>
+                      {headers.map((h) => (
+                        <TD key={h}>{String(row[h] ?? "")}</TD>
+                      ))}
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {SYSTEM_FIELDS.map((field) => (
                 <div key={field.key} className="space-y-1">
                   <Label>{field.label}</Label>
                   <Select
-                    value={mapping?.[field.key] ?? ""}
+                    value={mapping[field.key] ?? ""}
                     onChange={(e) =>
-                      setMapping((prev) => ({ ...(prev ?? ({} as ColumnMapping)), [field.key]: e.target.value }))
+                      setMapping((prev) => ({ ...prev, [field.key]: e.target.value }))
                     }
                   >
                     <option value="">-- เลือกคอลัมน์ --</option>
@@ -238,10 +352,7 @@ export function UploadSection() {
               ))}
             </div>
             <div className="flex gap-2">
-              <Button
-                onClick={handleConfirmMapping}
-                disabled={isBusy || SYSTEM_FIELDS.some((f) => !mapping?.[f.key])}
-              >
+              <Button onClick={handleConfirmMapping} disabled={isBusy || !isMappingComplete(mapping)}>
                 {isBusy ? "กำลังตรวจสอบ..." : "ตรวจสอบข้อมูล"}
               </Button>
               <Button variant="outline" onClick={reset}>
